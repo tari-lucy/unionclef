@@ -266,6 +266,22 @@ public class McpServer {
                 "Top-down surface map around the bot: for each (dx,dz) column within radius, the highest"
                 + " non-air block's height and hardness relative to the bot's feet. Radius capped at 6.",
                 schema("radius:int"), a -> api.getSurfaceMap(argInt(a, "radius")));
+        tool("takeScreenshot",
+                "The game frame as a downscaled JPEG: {format,width,height,bytes,base64}. Only the Minecraft "
+                + "framebuffer, never the desktop. maxWidth (160..1920) bounds the width; 0 means the default 960. The "
+                + "base64 is large text: save it to a file and do not keep it in the conversation. Fails "
+                + "while the game is not rendering (minimized, loading).",
+                schema("maxWidth:int"),
+                a -> {
+                    try {
+                        return ScreenshotTool.encode(api.getScreenshot(),
+                                a.has("maxWidth") ? argInt(a, "maxWidth") : 0);
+                    } catch (RuntimeException e) {
+                        throw e;
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e.getMessage(), e);
+                    }
+                });
 
         // movement
         tool("gotoXYZ",
