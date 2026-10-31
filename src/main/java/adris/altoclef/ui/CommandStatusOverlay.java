@@ -25,6 +25,8 @@ public class CommandStatusOverlay {
     private boolean paused = false;
 
     public void render(AltoClef mod, DrawContextWrapper context) {
+        // HUD hidden (F1, or setHudHidden for a clean screenshot): this overlay is HUD too
+        if (MinecraftClient.getInstance().options.hudHidden) return;
         List<Task> tasks = Collections.emptyList();
         if (mod.getTaskRunner().getCurrentTaskChain() != null) {
             // ⛔ THE RENDER THREAD MUST NOT WALK A LIST THE TICK THREAD IS REWRITING (G46,
