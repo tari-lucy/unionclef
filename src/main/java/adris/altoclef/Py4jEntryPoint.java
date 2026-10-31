@@ -1961,6 +1961,23 @@ public class Py4jEntryPoint {
         }, false));
     }
 
+    /** Camera view on the client thread: 0 first person, 1 third person back, 2 third person front. */
+    public boolean setCameraView(int view) {
+        if (view < 0 || view > 2) return false;
+        return Boolean.TRUE.equals(onClientThread(() -> {
+            setPerspective(view);
+            return true;
+        }, false));
+    }
+
+    /** Hide or show the HUD (hotbar, chat, debug text) -- a clean frame for screenshots. */
+    public boolean setHudHidden(boolean hidden) {
+        return Boolean.TRUE.equals(onClientThread(() -> {
+            MinecraftClient.getInstance().options.hudHidden = hidden;
+            return true;
+        }, false));
+    }
+
     private static kaptainwutax.tungsten.path.movements.Input inputByName(String name) {
         switch (name.toLowerCase()) {
             case "forward": return kaptainwutax.tungsten.path.movements.Input.MOVE_FORWARD;

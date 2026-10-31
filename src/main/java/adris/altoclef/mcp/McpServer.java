@@ -266,6 +266,24 @@ public class McpServer {
                 "Top-down surface map around the bot: for each (dx,dz) column within radius, the highest"
                 + " non-air block's height and hardness relative to the bot's feet. Radius capped at 6.",
                 schema("radius:int"), a -> api.getSurfaceMap(argInt(a, "radius")));
+        tool("lookAt",
+                "Turn the camera to face a world point (x,y,z; the block centre is used). Frame a shot "
+                + "with this, then call takeScreenshot.",
+                schema("x:int", "y:int", "z:int"),
+                a -> api.lookAt(argInt(a, "x") + 0.5, argInt(a, "y") + 0.5, argInt(a, "z") + 0.5));
+        tool("rotateCamera",
+                "Turn the camera by degrees relative to now: dYaw (+ turns right), dPitch (+ looks down, "
+                + "clamped to -90..90).",
+                schema("dYaw:int", "dPitch:int"),
+                a -> api.rotateCamera(argInt(a, "dYaw"), argInt(a, "dPitch")));
+        tool("setCameraView",
+                "Camera view: 0 first person, 1 third person from behind, 2 third person from the front "
+                + "(a shot of yourself). Set it back to 0 before moving on.",
+                schema("view:int"), a -> api.setCameraView(argInt(a, "view")));
+        tool("setHudHidden",
+                "Hide (true) or show (false) the HUD: hotbar, chat, debug text. Hide it for a clean "
+                + "screenshot (no other players' chat or coordinates in the frame); show it again after.",
+                schema("hidden:bool"), a -> api.setHudHidden(argBool(a, "hidden")));
         tool("takeScreenshot",
                 "The game frame as a downscaled JPEG: {format,width,height,bytes,base64}. Only the Minecraft "
                 + "framebuffer, never the desktop. maxWidth (160..1920) bounds the width; 0 means the default 960. The "
