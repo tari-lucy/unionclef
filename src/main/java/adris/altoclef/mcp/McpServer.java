@@ -246,6 +246,14 @@ public class McpServer {
         tool("getOpenScreen",
                 "Read the open menu (title + every slot: item id / display name / count) — shop or chest.",
                 schema(), a -> api.getOpenScreen());
+        tool("closeOpenScreen",
+                "Close whatever screen is open (inventory, chat, a menu). An open screen stops all "
+                + "walking, so close it before navigating. Returns true when done.",
+                schema(), a -> booleanMap(api.closeOpenScreen()));
+        tool("respawnPlayer",
+                "After death: close the death screen and request a respawn. Does nothing when the bot "
+                + "is alive and no screen is open. Returns true if the request went out.",
+                schema(), a -> booleanMap(api.respawnPlayer()));
         tool("getRecentChat",
                 "Last n chat messages (event/error markers).",
                 schema("n:int"), a -> api.getRecentChat(argInt(a, "n")));
