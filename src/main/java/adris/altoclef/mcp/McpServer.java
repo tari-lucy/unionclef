@@ -249,6 +249,15 @@ public class McpServer {
         tool("getRecentChat",
                 "Last n chat messages (event/error markers).",
                 schema("n:int"), a -> api.getRecentChat(argInt(a, "n")));
+        tool("getEntitiesInfo",
+                "Non-player entities around the bot (mobs and dropped items), nearest first: "
+                + "type/distance/position/is_hostile/is_mob/health/name (item and count for drops). "
+                + "limit<=0 means no cap. Read-only; use it to see who is near before fighting or fleeing.",
+                schema("limit:int"), a -> api.getEntitiesInfo(argInt(a, "limit")));
+        tool("getThreatStatus",
+                "Short text from the damage tracker about who has been hurting the bot lately "
+                + "(empty when nothing). Read-only.",
+                schema(), a -> api.getThreatStatus());
         tool("canReach",
                 "Heuristic: can we path to a cell (optionally breaking blocks)? Returns reached/pathSize/breaks/endDistance.",
                 schema("x:int", "y:int", "z:int", "withBreaking:bool"),
