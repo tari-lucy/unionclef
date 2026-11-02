@@ -246,6 +246,10 @@ public class McpServer {
         tool("getOpenScreen",
                 "Read the open menu (title + every slot: item id / display name / count) — shop or chest.",
                 schema(), a -> api.getOpenScreen());
+        tool("getServerInfo",
+                "Which server the client is on: address, name (as in the server list), brand the server "
+                + "announces, singleplayer flag, inGame. Read-only; use it to tell a known server from a new one.",
+                schema(), a -> api.getServerInfo());
         tool("closeOpenScreen",
                 "Close whatever screen is open (inventory, chat, a menu). An open screen stops all "
                 + "walking, so close it before navigating. Returns true when done.",

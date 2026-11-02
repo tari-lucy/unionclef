@@ -687,6 +687,30 @@ public class Py4jEntryPoint {
         }, false));
     }
 
+    /** Which server is this client on: address, name (as in the server list), brand the server
+     *  announces, and whether it is a single-player world. Read-only. The agent keys a profile
+     *  of each server on this, so a new server is recognised as new. */
+    public Map<String, Object> getServerInfo() {
+        return onClientThread(() -> {
+            Map<String, Object> out = new HashMap<>();
+            var mc = MinecraftClient.getInstance();
+            out.put("inGame", mc.player != null && mc.world != null);
+            var entry = mc.getCurrentServerEntry();
+            out.put("singleplayer", entry == null && mc.isInSingleplayer());
+            if (entry != null) {
+                out.put("address", String.valueOf(entry.address));
+                out.put("name", String.valueOf(entry.name));
+            }
+            var handler = mc.getNetworkHandler();
+            if (handler != null) {
+                String brand = handler.getBrand();
+                if (brand != null) out.put("brand", brand);
+            }
+            out.put("ok", true);
+            return out;
+        }, Map.of("ok", false, "reason", "client thread timeout"));
+    }
+
     public Map<String, String> CentralGameInfoDict = new HashMap<>();
 
     public Map<String, String> getServerInfoDict() {
