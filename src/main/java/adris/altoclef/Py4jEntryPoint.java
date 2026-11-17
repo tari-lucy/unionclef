@@ -6060,6 +6060,50 @@ public class Py4jEntryPoint {
     }
 
     /**
+     * Every non-air block in a box, in ONE call (at most 60000 cells): to compare a finished build with
+     * its plan and find what does not belong (scaffolding the builder left, stray blocks). Cells come as a
+     * flat array [x, y, z, paletteIndex, x, y, z, paletteIndex, ...]. {@code unloaded} counts columns of
+     * chunks the client has not loaded: those cells are not in the answer, so a clean result with
+     * unloaded > 0 is not a clean result.
+     */
+    public Map<String, Object> scanBox(int x1, int y1, int z1, int x2, int y2, int z2) {
+        return onClientThread(() -> {
+            Map<String, Object> out = new HashMap<>();
+            var world = MinecraftClient.getInstance().world;
+            if (world == null) { out.put("ok", false); out.put("error", "not in a world"); return out; }
+            int ax = Math.min(x1, x2), bx = Math.max(x1, x2), ay = Math.min(y1, y2), by = Math.max(y1, y2);
+            int az = Math.min(z1, z2), bz = Math.max(z1, z2);
+            long volume = (long) (bx - ax + 1) * (by - ay + 1) * (bz - az + 1);
+            if (volume > 60000) { out.put("ok", false); out.put("error", "box too large: at most 60000 cells"); return out; }
+            ay = Math.max(ay, world.getBottomY());
+            by = Math.min(by, world.getBottomY() + world.getHeight() - 1);
+            java.util.List<String> palette = new java.util.ArrayList<>();
+            java.util.Map<String, Integer> index = new HashMap<>();
+            java.util.List<Integer> cells = new java.util.ArrayList<>();
+            int unloaded = 0;
+            var pos = new net.minecraft.util.math.BlockPos.Mutable();
+            for (int z = az; z <= bz; z++) {
+                for (int x = ax; x <= bx; x++) {
+                    if (!world.getChunkManager().isChunkLoaded(x >> 4, z >> 4)) { unloaded++; continue; }
+                    for (int y = ay; y <= by; y++) {
+                        pos.set(x, y, z);
+                        var state = world.getBlockState(pos);
+                        if (state.isAir()) continue;
+                        String name = net.minecraft.registry.Registries.BLOCK.getId(state.getBlock()).toString();
+                        int k = index.computeIfAbsent(name, n -> { palette.add(n); return palette.size() - 1; });
+                        cells.add(x); cells.add(y); cells.add(z); cells.add(k);
+                    }
+                }
+            }
+            out.put("ok", true);
+            out.put("palette", palette);
+            out.put("cells", cells);
+            out.put("unloaded", unloaded);
+            return out;
+        }, Map.of("ok", false, "error", "client thread timeout"));
+    }
+
+    /**
      * Terrain heights over a rectangle, in ONE call, for choosing and levelling a building site
      * (getBlockAt per column is far too slow, getSurfaceMap stops at radius 6 around the bot).
      * For every column (x1..x2, z1..z2; at most 80x80, rows run along x, then z):

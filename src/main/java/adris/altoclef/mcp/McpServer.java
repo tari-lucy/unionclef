@@ -550,6 +550,13 @@ public class McpServer {
         tool("ChatMessage",
                 "Send chat / a tungsten command (';goto x y z', ';bridge', ';stop') or plain chat text.",
                 schema("msg:string"), a -> { api.ChatMessage(argStr(a, "msg")); return okMap(); });
+        tool("scanBox",
+                "Every non-air block in a box (at most 60000 cells) in ONE call: cells = flat [x,y,z,paletteIndex,...], "
+                + "palette = block ids, unloaded = columns whose chunk is not loaded (those cells are missing). "
+                + "Use it to compare a finished build with its plan and find what does not belong.",
+                schema("x1:int", "y1:int", "z1:int", "x2:int", "y2:int", "z2:int"),
+                a -> api.scanBox(argInt(a, "x1"), argInt(a, "y1"), argInt(a, "z1"),
+                                 argInt(a, "x2"), argInt(a, "y2"), argInt(a, "z2")));
         tool("getHeightmap",
                 "Terrain over a rectangle in ONE call (at most 80x80 columns), to pick and level a building site. "
                 + "Per column: y/id = highest block that is not air or replaceable (water, leaves, logs count), "
