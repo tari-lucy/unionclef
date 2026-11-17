@@ -922,6 +922,34 @@ public final class BlockPlaceHelper {
      *  over the cells around the target, lowest first. */
     private static BlockPos adjacentStand(net.minecraft.world.WorldView world, BlockPos target,
                                           BlockPos against, boolean allowSameLevel) {
+        // ⛔ DO NOT STAND IN A CELL THAT IS STILL TO BE BUILT (2026-11-17). The first pass keeps to
+        // stands whose feet and head are outside every cell the queue (and the deferred list) still
+        // owes: standing in one is a placement that can never happen from there (placementPlausible
+        // refuses a block on the body), and the build then spins on blockedByOwnBody -- measured 764
+        // refusals, nothing placed, on a stone plinth over a two-block slope, the stand picked being
+        // itself a missing plinth cell. The second pass is the old behaviour, so a corner where
+        // every stand is a pending cell still gets one instead of none.
+        java.util.Set<BlockPos> pending = pendingCells();
+        for (int pass = 0; pass < 2; pass++) {
+            boolean avoid = pass == 0 && !pending.isEmpty();
+            if (pass == 1 && pending.isEmpty()) break;   // nothing was avoided, so nothing new to find
+            BlockPos found = adjacentStandPass(world, target, against, allowSameLevel, avoid ? pending : null);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    /** Cells the queue or the deferred list still has to fill: no place to stand. */
+    private static java.util.Set<BlockPos> pendingCells() {
+        java.util.Set<BlockPos> out = new java.util.HashSet<>();
+        for (Cell c : QUEUE) out.add(c.pos());
+        out.addAll(DEFERRED);
+        return out;
+    }
+
+    private static BlockPos adjacentStandPass(net.minecraft.world.WorldView world, BlockPos target,
+                                              BlockPos against, boolean allowSameLevel,
+                                              java.util.Set<BlockPos> avoid) {
         int[] levels = allowSameLevel ? new int[]{-1, 0, 1} : new int[]{0, 1};
         for (int dy : levels) {
             for (Direction d : Direction.Type.HORIZONTAL) {
@@ -933,6 +961,7 @@ public final class BlockPlaceHelper {
                 // excludes the target cell itself (:1093-1095); the head is the same rule one
                 // level up, and skipping it is how the bot ends up shoving at its own eye level.
                 if (stand.up().equals(target)) continue;
+                if (avoid != null && (avoid.contains(stand) || avoid.contains(stand.up()))) continue;
                 if (!standable(world, stand)) continue;
                 return stand;
             }
@@ -1092,6 +1121,38 @@ public final class BlockPlaceHelper {
         return equipBlock(player, blockName);
     }
 
+    /**
+     * Move the stack of {@code blockName} from the main inventory (slots 9-35) into the hotbar and
+     * select it, like a player pressing a hotbar number over the stack. The target slot is an empty
+     * one, else one holding a non-block (a sword, food), else the selected slot. Returns false when
+     * the pack has none, when a container screen is open (the player screen handler is not the
+     * active one), or when the swap did not take.
+     */
+    private static boolean pullFromPack(ClientPlayerEntity player, String blockName) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.interactionManager == null || player.currentScreenHandler != player.playerScreenHandler) return false;
+        String want = blockName.contains(":") ? blockName : "minecraft:" + blockName;
+        int from = -1;
+        for (int i = 9; i < 36; i++) {
+            ItemStack st = player.getInventory().getStack(i);
+            if (!st.isEmpty() && Registries.ITEM.getId(st.getItem()).toString().equals(want)) { from = i; break; }
+        }
+        if (from < 0) return false;
+        int to = -1;
+        for (int i = 0; i < 9 && to < 0; i++) if (player.getInventory().getStack(i).isEmpty()) to = i;
+        for (int i = 0; i < 9 && to < 0; i++) {
+            if (!(player.getInventory().getStack(i).getItem() instanceof BlockItem)) to = i;
+        }
+        if (to < 0) to = player.getInventory().getSelectedSlot();
+        // PlayerScreenHandler: main inventory is window slots 9-35 (same index), SWAP button = hotbar index.
+        mc.interactionManager.clickSlot(player.playerScreenHandler.syncId, from, to,
+                net.minecraft.screen.slot.SlotActionType.SWAP, player);
+        ItemStack landed = player.getInventory().getStack(to);
+        if (landed.isEmpty() || !Registries.ITEM.getId(landed.getItem()).toString().equals(want)) return false;
+        player.getInventory().setSelectedSlot(to);
+        return true;
+    }
+
     /** Hold {@code blockName}. Returns false when it is not in the hotbar at all — the caller
      *  must then NOT place, because placing something else is worse than placing nothing.
      *  Skips the lookup when the wanted type is already equipped. */
@@ -1111,6 +1172,15 @@ public final class BlockPlaceHelper {
                     return true;
                 }
             }
+        }
+        // THE MATERIAL IS IN THE PACK, NOT IN THE HOTBAR. A player does not give up there: he moves
+        // the stack to the hotbar. Before this the builder only ever looked at slots 0-8, so a
+        // stack that /give, a chest or a pickup had put in the main inventory read as "no
+        // material" (deferNoMaterial) and the whole build stood still. Same vanilla swap a human
+        // does (hover the stack, press the hotbar number); no cheat, works on any server.
+        if (blockName != null && !blockName.isEmpty() && pullFromPack(player, blockName)) {
+            equipped = blockName;
+            return true;
         }
         if (player.getMainHandStack().getItem() instanceof BlockItem) return true;
         // NO "ANY BLOCK WILL DO" FALLBACK. It used to grab the first BlockItem in the hotbar when
