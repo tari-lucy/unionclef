@@ -430,6 +430,25 @@ public class McpServer {
                 + "+ gravity re-mine apply). Poll mineStatus; reposition (gotoXYZ) for out-of-reach.",
                 schema("x:int", "y:int", "z:int"),
                 a -> api.mineBlocks(java.util.List.of(java.util.List.of(argInt(a, "x"), argInt(a, "y"), argInt(a, "z")))));
+        tool("mineBlocks",
+                "Mine MANY blocks: blocks = JSON array of [x,y,z], handed to the break queue in the order given "
+                + "(send top-down so nothing is mined from under your feet). Poll mineStatus until "
+                + "mining=false && remaining=0; reposition (gotoXYZ) for cells out of reach. Needs allowBreak.",
+                schema("blocks:string"),
+                a -> {
+                    try {
+                        com.google.gson.JsonArray arr = com.google.gson.JsonParser
+                                .parseString(argStr(a, "blocks")).getAsJsonArray();
+                        java.util.List<Object> cells = new java.util.ArrayList<>();
+                        for (com.google.gson.JsonElement e : arr) {
+                            com.google.gson.JsonArray b = e.getAsJsonArray();
+                            cells.add(java.util.List.of(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()));
+                        }
+                        return api.mineBlocks(cells);
+                    } catch (Exception ex) {
+                        return java.util.Map.of("ok", false, "reason", "bad blocks JSON: " + ex.getMessage());
+                    }
+                });
         tool("mineStatus",
                 "Poll the break queue: {mining, remaining}. mining=false && remaining=0 -> done.",
                 schema(), a -> api.mineStatus());
@@ -531,6 +550,28 @@ public class McpServer {
         tool("ChatMessage",
                 "Send chat / a tungsten command (';goto x y z', ';bridge', ';stop') or plain chat text.",
                 schema("msg:string"), a -> { api.ChatMessage(argStr(a, "msg")); return okMap(); });
+        tool("getHeightmap",
+                "Terrain over a rectangle in ONE call (at most 80x80 columns), to pick and level a building site. "
+                + "Per column: y/id = highest block that is not air or replaceable (water, leaves, logs count), "
+                + "gy/gid = the real ground below (skips fluids, leaves, logs). Index = (z-z1)*width + (x-x1); ids "
+                + "point into palette; -9999 = chunk not loaded (walk closer). Only loaded chunks can be read.",
+                schema("x1:int", "z1:int", "x2:int", "z2:int"),
+                a -> api.getHeightmap(argInt(a, "x1"), argInt(a, "z1"), argInt(a, "x2"), argInt(a, "z2")));
+        tool("getHotbar",
+                "What the client really sees: the 9 hotbar slots (item/count), the selected slot, and the main "
+                + "inventory totals. Check this before a build: the builder can only use what is listed here "
+                + "(it also pulls a stack from the pack into the hotbar by itself).",
+                schema(), a -> api.getHotbar());
+        tool("sendGameCommand",
+                "Send a real game command as if typed in chat after '/', e.g. 'give @s minecraft:stone 64'. "
+                + "Needs cheats/operator rights. Sent, not confirmed: read getRecentChat for the answer. "
+                + "(ExecuteCommand only runs altoclef '@' commands, not '/give'.)",
+                schema("command:string"), a -> api.sendGameCommand(argStr(a, "command")));
+        tool("creativeTakeBlock",
+                "Creative mode only, no cheats needed: put an item stack (e.g. 'minecraft:stone_bricks', count up to the "
+                + "stack size) into hotbar slot 0-8. Check the result with inventorySpace.",
+                schema("item:string", "count:int", "hotbarSlot:int"),
+                a -> api.creativeTakeBlock(argStr(a, "item"), argInt(a, "count"), argInt(a, "hotbarSlot")));
         tool("ConnectToServer",
                 "Connect to a Minecraft server by address (e.g. 'mc.example.top' or 'test-server').",
                 schema("ip:string"), a -> { api.ConnectToServer(argStr(a, "ip")); return okMap(); });

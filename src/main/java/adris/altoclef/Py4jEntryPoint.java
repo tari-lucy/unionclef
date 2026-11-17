@@ -28,6 +28,7 @@ import net.minecraft.client.util.ScreenshotRecorder;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
+import adris.altoclef.multiversion.entity.PlayerVer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.text.Text;
@@ -6054,6 +6055,175 @@ public class Py4jEntryPoint {
             out.put("totalSlots", 36);
             out.put("blockCount", blockTotal);
             out.put("blocks", blocks);
+            return out;
+        }, Map.of("ok", false, "error", "client thread timeout"));
+    }
+
+    /**
+     * Terrain heights over a rectangle, in ONE call, for choosing and levelling a building site
+     * (getBlockAt per column is far too slow, getSurfaceMap stops at radius 6 around the bot).
+     * For every column (x1..x2, z1..z2; at most 80x80, rows run along x, then z):
+     * <ul>
+     *   <li>{@code y}/{@code id}: the highest block that is neither air nor replaceable (grass, flowers,
+     *       snow layer), so water, lava, leaves and logs count here: what you would hit from above;</li>
+     *   <li>{@code gy}/{@code gid}: the GROUND under that, skipping fluids, leaves and logs: where a
+     *       building would actually stand.</li>
+     * </ul>
+     * Index of a column = (z - z1) * width + (x - x1); ids are indexes into {@code palette}. -9999 =
+     * the chunk is not loaded (walk closer). Only what the client has loaded can be read.
+     */
+    public Map<String, Object> getHeightmap(int x1, int z1, int x2, int z2) {
+        return onClientThread(() -> {
+            Map<String, Object> out = new HashMap<>();
+            var client = MinecraftClient.getInstance();
+            var world = client.world;
+            var player = client.player;
+            if (world == null || player == null) { out.put("ok", false); out.put("error", "not in a world"); return out; }
+            int ax = Math.min(x1, x2), bx = Math.max(x1, x2), az = Math.min(z1, z2), bz = Math.max(z1, z2);
+            int width = bx - ax + 1, depth = bz - az + 1;
+            if (width > 80 || depth > 80) {
+                out.put("ok", false); out.put("error", "area too large: at most 80x80 columns"); return out;
+            }
+            int top = world.getBottomY() + world.getHeight() - 1;
+            int py = (int) Math.floor(player.getY());
+            int from = Math.min(top, py + 48), to = Math.max(world.getBottomY(), py - 64);
+            java.util.List<String> palette = new java.util.ArrayList<>();
+            java.util.Map<String, Integer> index = new HashMap<>();
+            int[] ys = new int[width * depth], gys = new int[width * depth], ids = new int[width * depth], gids = new int[width * depth];
+            var pos = new net.minecraft.util.math.BlockPos.Mutable();
+            for (int z = az; z <= bz; z++) {
+                for (int x = ax; x <= bx; x++) {
+                    int i = (z - az) * width + (x - ax);
+                    if (!world.getChunkManager().isChunkLoaded(x >> 4, z >> 4)) {
+                        ys[i] = gys[i] = -9999; ids[i] = gids[i] = -1; continue;
+                    }
+                    ys[i] = gys[i] = -9999; ids[i] = gids[i] = -1;
+                    for (int y = from; y >= to; y--) {
+                        pos.set(x, y, z);
+                        var state = world.getBlockState(pos);
+                        if (state.isAir()) continue;
+                        boolean fluid = !state.getFluidState().isEmpty();
+                        if (!fluid && state.isReplaceable()) continue;      // grass, flowers, snow layer
+                        String name = net.minecraft.registry.Registries.BLOCK.getId(state.getBlock()).toString();
+                        if (ids[i] < 0) {
+                            ys[i] = y;
+                            ids[i] = index.computeIfAbsent(name, k -> { palette.add(k); return palette.size() - 1; });
+                        }
+                        boolean cover = fluid || name.contains("leaves") || name.endsWith("_log") || name.endsWith("_wood")
+                                || name.endsWith("_stem") || name.contains("vine");
+                        if (!cover) {
+                            gys[i] = y;
+                            gids[i] = index.computeIfAbsent(name, k -> { palette.add(k); return palette.size() - 1; });
+                            break;
+                        }
+                    }
+                }
+            }
+            out.put("ok", true);
+            out.put("x1", ax); out.put("z1", az); out.put("width", width); out.put("depth", depth);
+            out.put("palette", palette);
+            out.put("y", ys); out.put("id", ids); out.put("gy", gys); out.put("gid", gids);
+            return out;
+        }, Map.of("ok", false, "error", "client thread timeout"));
+    }
+
+    /**
+     * What the CLIENT sees in the nine hotbar slots and in the main inventory. The builder takes
+     * blocks from the hotbar, and pulls a stack from the pack into it when the hotbar has none, so
+     * this is the truth to check before a build: if the item is not listed here, the build cannot
+     * see it, whatever a server command said.
+     */
+    public Map<String, Object> getHotbar() {
+        return onClientThread(() -> {
+            Map<String, Object> out = new HashMap<>();
+            var player = MinecraftClient.getInstance().player;
+            if (player == null) { out.put("ok", false); out.put("error", "not in a world"); return out; }
+            var inv = player.getInventory();
+            java.util.List<Map<String, Object>> hot = new java.util.ArrayList<>();
+            for (int i = 0; i < 9; i++) {
+                ItemStack st = inv.getStack(i);
+                Map<String, Object> s = new HashMap<>();
+                s.put("slot", i);
+                s.put("item", st.isEmpty() ? "empty" : net.minecraft.registry.Registries.ITEM.getId(st.getItem()).toString());
+                s.put("count", st.getCount());
+                hot.add(s);
+            }
+            Map<String, Integer> pack = new HashMap<>();
+            for (int i = 9; i < 36; i++) {
+                ItemStack st = inv.getStack(i);
+                if (!st.isEmpty()) pack.merge(net.minecraft.registry.Registries.ITEM.getId(st.getItem()).toString(), st.getCount(), Integer::sum);
+            }
+            out.put("ok", true);
+            out.put("hotbar", hot);
+            out.put("selected", PlayerVer.getSelectedSlot(inv));
+            out.put("pack", pack);
+            return out;
+        }, Map.of("ok", false, "error", "client thread timeout"));
+    }
+
+    /**
+     * Send a real game command (what you would type after "/"), e.g. "give @s minecraft:stone 64".
+     * ExecuteCommand only understands altoclef's own "@" commands, so "/give" never reached the game.
+     * Needs cheats / operator rights in the world; the server's answer shows up in getRecentChat.
+     */
+    public Map<String, Object> sendGameCommand(String command) {
+        return onClientThread(() -> {
+            Map<String, Object> out = new HashMap<>();
+            var player = MinecraftClient.getInstance().player;
+            if (player == null) { out.put("ok", false); out.put("error", "not in a world"); return out; }
+            String cmd = command == null ? "" : command.strip();
+            while (cmd.startsWith("/")) cmd = cmd.substring(1);
+            if (cmd.isBlank()) { out.put("ok", false); out.put("error", "empty command"); return out; }
+            PlayerVer.sendChatCommand(player, cmd);
+            out.put("ok", true);
+            out.put("sent", "/" + cmd);
+            out.put("note", "sent, not confirmed: read getRecentChat for the server's answer");
+            return out;
+        }, Map.of("ok", false, "error", "client thread timeout"));
+    }
+
+    /**
+     * Creative mode only: put an item stack into a hotbar slot (0-8), like picking it from the creative
+     * menu. Needs no cheats. Verifies the stack really landed and reports it.
+     */
+    public Map<String, Object> creativeTakeBlock(String item, int count, int hotbarSlot) {
+        return onClientThread(() -> {
+            Map<String, Object> out = new HashMap<>();
+            var client = MinecraftClient.getInstance();
+            var player = client.player;
+            if (player == null || client.interactionManager == null) {
+                out.put("ok", false); out.put("error", "not in a world"); return out;
+            }
+            if (!player.isCreative()) {
+                out.put("ok", false); out.put("error", "not in creative mode"); return out;
+            }
+            if (hotbarSlot < 0 || hotbarSlot > 8) {
+                out.put("ok", false); out.put("error", "hotbarSlot must be 0-8"); return out;
+            }
+            String name = item == null ? "" : item.strip();
+            if (!name.contains(":")) name = "minecraft:" + name;
+            var id = net.minecraft.util.Identifier.tryParse(name);
+            if (id == null || !net.minecraft.registry.Registries.ITEM.containsId(id)) {
+                out.put("ok", false); out.put("error", "unknown item: " + name); return out;
+            }
+            //#if MC >= 12111
+            //$$ var entry = net.minecraft.registry.Registries.ITEM.getEntry(id);
+            //$$ if (entry.isEmpty()) { out.put("ok", false); out.put("error", "unknown item: " + name); return out; }
+            //$$ net.minecraft.item.Item type = entry.get().value();
+            //#else
+            net.minecraft.item.Item type = net.minecraft.registry.Registries.ITEM.get(id);
+            //#endif
+            int n = Math.max(1, Math.min(count, type.getMaxCount()));
+            ItemStack stack = new ItemStack(type, n);
+            // What the creative menu does: fill the slot on this side AND tell the server. Without
+            // the local write the slot stayed as it was until a server echo that never came.
+            player.playerScreenHandler.getSlot(36 + hotbarSlot).setStack(stack);
+            client.interactionManager.clickCreativeStack(stack, 36 + hotbarSlot);
+            out.put("ok", true);
+            out.put("item", id.toString());
+            out.put("count", n);
+            out.put("hotbarSlot", hotbarSlot);
+            out.put("note", "placed; confirm with inventorySpace");
             return out;
         }, Map.of("ok", false, "error", "client thread timeout"));
     }
