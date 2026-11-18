@@ -204,6 +204,13 @@ public final class BlockPlaceHelper {
     private static final int WALK_AFTER_TICKS = 10;
     /** How many walks one cell is worth before it goes back to the agent. */
     private static final int MAX_WALK_ATTEMPTS = 4;
+    /** How many times one cell may be handed to PillarTask before it goes back to the agent. A tower
+     *  that ends without a rung (the click refused, the ray on something else) used to be started
+     *  again on the very next tick, for ever: measured on a lighthouse floor cell as 101-tick hops
+     *  on the spot, "Pillar stuck ... readyNull=25 placed=0", repeated for minutes. */
+    private static final int MAX_PILLAR_STARTS = 3;
+    private static BlockPos pillarHead;
+    private static int pillarStarts;
     /** How long to spend walking for one cell before giving up on it. 200 ticks (10 s) was too
      *  tight and deferred cells the navigator was still walking towards; a build walk is a
      *  pathfind plus the walk, and the queue is not in a hurry. */
@@ -243,6 +250,8 @@ public final class BlockPlaceHelper {
     public static synchronized void resetCounters() {
         placedFromQueue = 0;
         alreadyFilled = 0;
+        pillarHead = null;
+        pillarStarts = 0;
         deferNoFace = 0;
         deferTimeout = 0;
         deferProtected = 0;
@@ -488,6 +497,28 @@ public final class BlockPlaceHelper {
                     QUEUE.poll();
                     DEFERRED.add(head);
                     deferNoMaterial++;
+                    idleTicks = 0;
+                    return;
+                }
+                if (head.equals(pillarHead)) {
+                    pillarStarts++;
+                } else {
+                    pillarHead = head;
+                    pillarStarts = 1;
+                }
+                if (pillarStarts > MAX_PILLAR_STARTS) {
+                    // Three towers in a row ended without filling this cell: a fourth will not.
+                    // Hand the cell back (the agent sees it in deferred()) instead of hopping on
+                    // the spot; the diagnostic line of PillarTask says why each one failed.
+                    if (walkDebug.length() < 700) {
+                        walkDebug += "PILLAR-GAVE-UP(" + head.toShortString() + ") ";
+                    }
+                    stopWalking();
+                    QUEUE.poll();
+                    DEFERRED.add(head);
+                    deferNoFace++;
+                    pillarHead = null;
+                    pillarStarts = 0;
                     idleTicks = 0;
                     return;
                 }

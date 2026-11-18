@@ -469,7 +469,8 @@ public class PillarTask {
             try {
                 var lh = kaptainwutax.tungsten.path.movements.RotationHelper.liveHit(player);
                 if (lh instanceof BlockHitResult bh) {
-                    hitS = bh.getBlockPos().toShortString() + "/" + String.valueOf(bh.getSide());
+                    hitS = bh.getBlockPos().toShortString() + "/" + String.valueOf(bh.getSide()) + " "
+                            + world.getBlockState(bh.getBlockPos()).getBlock();   // name the culprit, not only where it is
                 } else if (lh != null) {
                     hitS = lh.getType().name();
                 }
