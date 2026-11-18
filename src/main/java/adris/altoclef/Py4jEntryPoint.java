@@ -6193,11 +6193,16 @@ public class Py4jEntryPoint {
                 hot.add(s);
             }
             Map<String, Integer> pack = new HashMap<>();
+            java.util.List<Integer> packEmpty = new java.util.ArrayList<>();
             for (int i = 9; i < 36; i++) {
                 ItemStack st = inv.getStack(i);
-                if (!st.isEmpty()) pack.merge(net.minecraft.registry.Registries.ITEM.getId(st.getItem()).toString(), st.getCount(), Integer::sum);
+                if (st.isEmpty()) packEmpty.add(i);
+                else pack.merge(net.minecraft.registry.Registries.ITEM.getId(st.getItem()).toString(), st.getCount(), Integer::sum);
             }
             out.put("ok", true);
+            // Whether creativeTakeBlock can work, and where it may put a stack (no /give needed).
+            out.put("creative", player.isCreative());
+            out.put("packEmpty", packEmpty);
             out.put("hotbar", hot);
             out.put("selected", PlayerVer.getSelectedSlot(inv));
             out.put("pack", pack);
@@ -6227,8 +6232,10 @@ public class Py4jEntryPoint {
     }
 
     /**
-     * Creative mode only: put an item stack into a hotbar slot (0-8), like picking it from the creative
-     * menu. Needs no cheats. Verifies the stack really landed and reports it.
+     * Creative mode only: put an item stack into a slot, like picking it from the creative menu. Slot
+     * 0-8 is the hotbar, 9-35 the main inventory (the builder pulls a stack from there into the hotbar
+     * when the hotbar has none). Needs no cheats and no /give, so it works on a server where commands
+     * are off. Replaces whatever the slot held: take the empty ones from getHotbar (hotbar, packEmpty).
      */
     public Map<String, Object> creativeTakeBlock(String item, int count, int hotbarSlot) {
         return onClientThread(() -> {
@@ -6241,9 +6248,11 @@ public class Py4jEntryPoint {
             if (!player.isCreative()) {
                 out.put("ok", false); out.put("error", "not in creative mode"); return out;
             }
-            if (hotbarSlot < 0 || hotbarSlot > 8) {
-                out.put("ok", false); out.put("error", "hotbarSlot must be 0-8"); return out;
+            if (hotbarSlot < 0 || hotbarSlot > 35) {
+                out.put("ok", false); out.put("error", "slot must be 0-8 (hotbar) or 9-35 (main inventory)"); return out;
             }
+            // The player's screen handler numbers the hotbar 36-44 and the main inventory 9-35.
+            int screenSlot = hotbarSlot < 9 ? 36 + hotbarSlot : hotbarSlot;
             String name = item == null ? "" : item.strip();
             if (!name.contains(":")) name = "minecraft:" + name;
             var id = net.minecraft.util.Identifier.tryParse(name);
@@ -6261,8 +6270,8 @@ public class Py4jEntryPoint {
             ItemStack stack = new ItemStack(type, n);
             // What the creative menu does: fill the slot on this side AND tell the server. Without
             // the local write the slot stayed as it was until a server echo that never came.
-            player.playerScreenHandler.getSlot(36 + hotbarSlot).setStack(stack);
-            client.interactionManager.clickCreativeStack(stack, 36 + hotbarSlot);
+            player.playerScreenHandler.getSlot(screenSlot).setStack(stack);
+            client.interactionManager.clickCreativeStack(stack, screenSlot);
             out.put("ok", true);
             out.put("item", id.toString());
             out.put("count", n);

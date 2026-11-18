@@ -566,8 +566,9 @@ public class McpServer {
                 a -> api.getHeightmap(argInt(a, "x1"), argInt(a, "z1"), argInt(a, "x2"), argInt(a, "z2")));
         tool("getHotbar",
                 "What the client really sees: the 9 hotbar slots (item/count), the selected slot, and the main "
-                + "inventory totals. Check this before a build: the builder can only use what is listed here "
-                + "(it also pulls a stack from the pack into the hotbar by itself).",
+                + "inventory totals, whether the player is in creative mode ('creative') and which main-inventory "
+                + "slots are empty ('packEmpty', for creativeTakeBlock). Check this before a build: the builder can "
+                + "only use what is listed here (it also pulls a stack from the pack into the hotbar by itself).",
                 schema(), a -> api.getHotbar());
         tool("sendGameCommand",
                 "Send a real game command as if typed in chat after '/', e.g. 'give @s minecraft:stone 64'. "
@@ -575,8 +576,9 @@ public class McpServer {
                 + "(ExecuteCommand only runs altoclef '@' commands, not '/give'.)",
                 schema("command:string"), a -> api.sendGameCommand(argStr(a, "command")));
         tool("creativeTakeBlock",
-                "Creative mode only, no cheats needed: put an item stack (e.g. 'minecraft:stone_bricks', count up to the "
-                + "stack size) into hotbar slot 0-8. Check the result with inventorySpace.",
+                "Creative mode only, no cheats and no /give needed: put an item stack (e.g. 'minecraft:stone_bricks', count "
+                + "up to the stack size) into slot 0-8 (hotbar) or 9-35 (main inventory; the builder pulls from there). "
+                + "Replaces what the slot held: take empty slots from getHotbar. Check with getHotbar.",
                 schema("item:string", "count:int", "hotbarSlot:int"),
                 a -> api.creativeTakeBlock(argStr(a, "item"), argInt(a, "count"), argInt(a, "hotbarSlot")));
         tool("ConnectToServer",
