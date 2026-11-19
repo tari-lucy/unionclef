@@ -875,6 +875,18 @@ public final class BlockPlaceHelper {
             BlockPos stand = adjacentStand(world, target, against, allowSameLevel || facing == Direction.DOWN);
             if (stand != null) return stand;
         }
+        // ⛔ A CELL UNDER A CEILING IS PLACED FROM BELOW (2026-11-19). The loop above asks every
+        // face EXCEPT the one above, so a cell whose usable neighbour is the block over it -- the top
+        // row of a wall right under the next floor -- found no stand: at its own level the head hits
+        // the ceiling, one level down there is no floor in the open room, and a scaffold needs three
+        // blocks of headroom. NOSTAND, three cells of a house's first-floor wall, measured on her
+        // renovation, while from the floor four blocks below the ceiling's bottom face was 3.5 blocks
+        // away. The place loop already tries all six faces (BuilderProcess.possibleToPlace:499,
+        // Direction.values()); only the stand search had lost UP. This is that face's stand.
+        if (RealPlacement.canPlaceAgainst(world, target.up())) {
+            BlockPos under = ceilingStand(world, target);
+            if (under != null) return under;
+        }
         // GoalPlace — stand on top of the cell and place downwards (BuilderProcess.java:1147).
         // ONLY IF WE CAN ACTUALLY STAND THERE. Upstream can hand this goal to a pathfinder that
         // pillars up to reach it; ours walks, so a goal floating in mid-air is not a destination,
@@ -891,6 +903,48 @@ public final class BlockPlaceHelper {
         // that belong to whoever owns the build, not to the queue draining it.
         BlockPos above = target.up();
         return standable(world, above) ? above : null;
+    }
+
+    /** Reach used to pick a stand below a ceiling cell: survival's 4.5, so creative's 5 has room. */
+    private static final double CEILING_REACH = 4.5;
+
+    /**
+     * Where to stand to place {@code target} against the BOTTOM face of the block above it: two to
+     * five levels down (the head stays under the cell), in the cell's own column or a neighbouring
+     * one, with the eye within {@link #CEILING_REACH} of that face. The nearest such stand that is
+     * not itself a cell still owed; in the cell's own column the cells between the head and the
+     * target must be open, elsewhere the place loop's ray trace decides. Null when there is none.
+     */
+    private static BlockPos ceilingStand(net.minecraft.world.WorldView world, BlockPos target) {
+        java.util.Set<BlockPos> pending = pendingCells();
+        Vec3d face = new Vec3d(target.getX() + 0.5, target.getY() + 1.0, target.getZ() + 0.5);
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        int[][] columns = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+        for (int dy = 2; dy <= 5; dy++) {
+            for (int[] c : columns) {
+                BlockPos stand = target.add(c[0], -dy, c[1]);
+                if (pending.contains(stand) || pending.contains(stand.up())) continue;
+                if (!standable(world, stand)) continue;
+                if (c[0] == 0 && c[1] == 0) {
+                    boolean open = true;
+                    for (int y = stand.getY() + 2; y < target.getY(); y++) {
+                        BlockPos cell = new BlockPos(target.getX(), y, target.getZ());
+                        if (!kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(world, cell)) {
+                            open = false;
+                            break;
+                        }
+                    }
+                    if (!open) continue;
+                }
+                double dist = new Vec3d(stand.getX() + 0.5, stand.getY() + 1.62, stand.getZ() + 0.5).distanceTo(face);
+                if (dist <= CEILING_REACH && dist < bestDist) {
+                    best = stand;
+                    bestDist = dist;
+                }
+            }
+        }
+        return best;
     }
 
     /** Scaffolds started for a cell with no reachable stand (see drainQueue). */
