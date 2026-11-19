@@ -80,6 +80,9 @@ public class DeathMenuChain extends TaskChain {
 
         if (screen instanceof DeathScreen) {
             AltoClef mod = AltoClef.getInstance();
+            // Dead: whoever we were told to hit back is not a target after respawning. Without this
+            // a 30-second pursue order outlived the death and the bot hit the first player it met.
+            mod.getDamageTracker().getThreatTable().forgetTargets();
 
             if (waitOnDeathScreenBeforeRespawnTimer.elapsed()) {
                 waitOnDeathScreenBeforeRespawnTimer.reset();

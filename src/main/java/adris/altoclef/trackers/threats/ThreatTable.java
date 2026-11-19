@@ -177,14 +177,19 @@ public class ThreatTable {
                 }
                 threat.combatEngagementTimer.reset();
                 PlayerThreat attackerThreat = getLastAttacker(damagedName, true);
+                // ⛔ HIT BACK ONLY THE PLAYER THE SERVER NAMED (2026-11-19). The guess below picks
+                // whoever swung a hand towards us lately, so drowning, a fall or a mob's hit next to
+                // a player breaking blocks made him the "attacker": the bot then beat an innocent
+                // player, and did it again after respawning. The damage packet carries the real
+                // source (getRecentDamageSource().getAttacker(), the same thing MobDefenseChain's
+                // damageHadAnAttacker reads); only a player there is pursued. The guess still feeds
+                // the damage records, it just never starts a fight.
+                if (_mod.getPlayer() != null && _mod.getPlayer().getName() != null && threat.name != null
+                        && threat.name.equals(_mod.getPlayer().getName().getString())) {
+                    String real = playerWhoHitMe();
+                    if (real != null) pursue(real);
+                }
                 if (attackerThreat != null && attackerThreat.id != -1) {
-                    if (attackerThreat.name != null && !attackerThreat.name.isBlank() &&
-                            threat.name != null && !threat.name.isBlank()) {
-                        if (_mod.getPlayer() != null && _mod.getPlayer().getName() != null &&
-                                threat.name.equals(_mod.getPlayer().getName().getString())) {
-                            pursue(attackerThreat.name);
-                        }
-                    }
                     threat.combatEngagementTimer.reset();
                     threat.addDamageRecord(attackerThreat.id, amount);
                     return attackerThreat.id;
@@ -276,6 +281,27 @@ public class ThreatTable {
         return false;
     }
 
+    /** The player the last damage packet named as our attacker, or null (water, a fall, a mob, unknown). */
+    private String playerWhoHitMe() {
+        PlayerEntity me = _mod.getPlayer();
+        if (me == null) return null;
+        net.minecraft.entity.damage.DamageSource src = me.getRecentDamageSource();
+        if (src == null) return null;
+        Entity attacker = src.getAttacker();
+        if (attacker instanceof PlayerEntity player && player != me && player.getName() != null) {
+            return player.getName().getString();
+        }
+        return null;
+    }
+
+    /** Drop every pursue and avoid order: after our own death there is nobody to finish off. */
+    public void forgetTargets() {
+        for (PlayerThreat threat : playerThreats.values()) {
+            threat.shouldKillTimer.forceElapse();
+            threat.shouldAvoidTimer.forceElapse();
+        }
+    }
+
     public boolean pursue(String playerName) {
         PlayerThreat threat = playerThreats.get(playerName);
         if (threat != null && !isSelfThreat(threat)) {
@@ -325,7 +351,10 @@ public class ThreatTable {
             PlayerThreat threat = entry.getValue();
             sb.append(entry.getKey()).append(": health=")
               .append(String.format("%.0f", threat.lastHealth))
-              .append(isInCombat(entry.getKey()) ? " IN COMBAT" : " PEACEFUL").append("\n");
+              .append(isInCombat(entry.getKey()) ? " IN COMBAT" : " PEACEFUL")
+              // HIT_ME: the server named this player as the one who hit us; the platform's reflex
+              // answers only such a player, never a name that merely appears in this table.
+              .append(shouldAttack(entry.getKey()) ? " HIT_ME" : "").append("\n");
         }
         return sb.toString();
     }
