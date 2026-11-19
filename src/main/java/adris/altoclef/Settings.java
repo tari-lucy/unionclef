@@ -632,6 +632,19 @@ public class Settings implements IFailableConfigFile {
      */
     private String mcpAuthToken = "";
 
+    /**
+     * Whether commands the bot sends may teleport it (tp, teleport, spreadplayers, execute ... run
+     * tp). Off: GameCommandGuard refuses them and the agent has to walk. The leading underscore
+     * keeps it out of {@code @set}, so only a person editing this file can turn it on; the JSON key
+     * is the plain name.
+     */
+    @com.fasterxml.jackson.annotation.JsonProperty("allowTeleportCommands")
+    private boolean _allowTeleportCommands = false;
+
+    public boolean allowTeleportCommands() {
+        return _allowTeleportCommands;
+    }
+
     public boolean isMcpEnabled() {
         return mcpEnabled;
     }

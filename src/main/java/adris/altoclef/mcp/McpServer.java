@@ -573,7 +573,9 @@ public class McpServer {
         tool("sendGameCommand",
                 "Send a real game command as if typed in chat after '/', e.g. 'give @s minecraft:stone 64'. "
                 + "Needs cheats/operator rights. Sent, not confirmed: read getRecentChat for the answer. "
-                + "(ExecuteCommand only runs altoclef '@' commands, not '/give'.)",
+                + "(ExecuteCommand only runs altoclef '@' commands, not '/give'.) "
+                + "Teleports (tp, teleport, spreadplayers, execute ... run tp) are refused: walk there "
+                + "with gotoXYZ or let the builder walk.",
                 schema("command:string"), a -> api.sendGameCommand(argStr(a, "command")));
         tool("creativeTakeBlock",
                 "Creative mode only, no cheats and no /give needed: put an item stack (e.g. 'minecraft:stone_bricks', count "

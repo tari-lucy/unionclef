@@ -18,6 +18,12 @@ public class PlayerVer {
     }
 
     public static void sendChatCommand(ClientPlayerEntity player,String content) {
+        // Every command the bot sends passes here, so the teleport ban lives here too.
+        String refusal = adris.altoclef.util.helpers.GameCommandGuard.refusal(content);
+        if (refusal != null) {
+            adris.altoclef.Debug.logWarning("Not sent: /" + content + " -- " + refusal);
+            return;
+        }
         //#if MC >= 11904
         player.networkHandler.sendChatCommand(content);
         //#else

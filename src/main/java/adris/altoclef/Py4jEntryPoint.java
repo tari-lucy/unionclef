@@ -6214,6 +6214,8 @@ public class Py4jEntryPoint {
      * Send a real game command (what you would type after "/"), e.g. "give @s minecraft:stone 64".
      * ExecuteCommand only understands altoclef's own "@" commands, so "/give" never reached the game.
      * Needs cheats / operator rights in the world; the server's answer shows up in getRecentChat.
+     * Teleports (tp, teleport, spreadplayers, execute ... run tp) are refused unless the operator
+     * allowed them: walk with gotoXYZ or let the builder walk instead.
      */
     public Map<String, Object> sendGameCommand(String command) {
         return onClientThread(() -> {
@@ -6223,6 +6225,8 @@ public class Py4jEntryPoint {
             String cmd = command == null ? "" : command.strip();
             while (cmd.startsWith("/")) cmd = cmd.substring(1);
             if (cmd.isBlank()) { out.put("ok", false); out.put("error", "empty command"); return out; }
+            String refusal = adris.altoclef.util.helpers.GameCommandGuard.refusal(cmd);
+            if (refusal != null) { out.put("ok", false); out.put("error", refusal); return out; }
             PlayerVer.sendChatCommand(player, cmd);
             out.put("ok", true);
             out.put("sent", "/" + cmd);
