@@ -43,6 +43,18 @@ public class StopCommand extends Command {
 				// the defect this was written for.
 				TungstenMod.stopNavigation();
 
+				// THE BUILD QUEUE IS A DRIVER TOO (2026-11-19). stopNavigation ends the walk and the
+				// tower, and the queue's next tick started them again for the cells it still owed:
+				// the agent sent @stop, got ok, and the bot kept hopping on its pillar until a
+				// separate buildQueueClear. An explicit stop drops what the queue owes; the cells
+				// are not lost to the agent, it re-issues the plan and the builder skips what stands.
+				int owed = kaptainwutax.tungsten.helpers.BlockPlaceHelper.queued();
+				if (owed > 0) {
+					kaptainwutax.tungsten.helpers.BlockPlaceHelper.clearQueue();
+					hadSomething = true;
+					Debug.logMessage("Build queue dropped (" + owed + " cells)");
+				}
+
 				// Stop punk task first (it manages its own follow internally)
 				if (PunkPlayerTask.isActive()) {
 					PunkPlayerTask.stop();

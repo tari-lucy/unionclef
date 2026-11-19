@@ -17,6 +17,13 @@ public class StopCommand extends Command {
     protected void call(AltoClef mod, ArgParser parser) {
         Debug.logMessage("Stopped all tasks");
         mod.stopTasks();
+        // "Stop all automation" includes the build queue: stopTasks ends the walk and the tower,
+        // and the queue would start them again next tick for the cells it still owes (2026-11-19).
+        int owed = kaptainwutax.tungsten.helpers.BlockPlaceHelper.queued();
+        if (owed > 0) {
+            kaptainwutax.tungsten.helpers.BlockPlaceHelper.clearQueue();
+            Debug.logMessage("Build queue dropped (" + owed + " cells)");
+        }
         finish();
     }
 }
