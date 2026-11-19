@@ -45,6 +45,13 @@ public class PillarTask {
     /** G82: towers stopped for want of a rung, and towers refused at once because the feet
      *  stood inside a thin block (carpet, snow layers) that vanilla will not place into. */
     public static volatile int pillarNoRung, pillarThinFeet;
+    /** A flower-like block (no collision, in the ray's way) being broken before the hop, how long
+     *  it has taken, and the cap: such blocks break in one hit, so a second of trying is plenty. */
+    private static BlockPos clearing;
+    private static int clearTicks;
+    private static final int CLEAR_TICKS_MAX = 40;
+    /** Column blocks without collision broken before a hop, and towers refused over one. */
+    public static volatile int pillarOutlineCleared, pillarOutlineRefused;
     /** Ticks spent walking the body to the middle of its cell before the first jump (G42). */
     private static int centerTicks;
     private static final double CENTER_TOL = 0.2;
@@ -155,7 +162,9 @@ public class PillarTask {
         placed = 0;
         sinceRung = 0;
         centerTicks = 0;
-        dAir = dPlaceAt = dReadyNull = dTryFalse = dPlaced = dInsideCell = dJumpStolen = dSneakWait = 0;
+        clearing = null;
+        clearTicks = 0;
+        dAir =dPlaceAt = dReadyNull = dTryFalse = dPlaced = dInsideCell = dJumpStolen = dSneakWait = 0;
         jumpAsked = false;
         dApex = -1e9;
         dLastPlaceAt = null;
@@ -186,7 +195,9 @@ public class PillarTask {
             mc.options.forwardKey.setPressed(false);
             mc.options.sprintKey.setPressed(false);
             mc.options.sneakKey.setPressed(false);
+            if (clearing != null) mc.options.attackKey.setPressed(false);   // only if this task held it
         }
+        clearing = null;
         WindMouseRotation.INSTANCE.clearTarget();
         kaptainwutax.tungsten.TungstenModRenderContainer.PLACE_PLAN.clear();
     }
@@ -250,6 +261,82 @@ public class PillarTask {
                 noteRefusal(col);
                 stop();
                 return;
+            }
+        }
+
+        // ⛔ A FLOWER IN THE COLUMN IS BROKEN BEFORE THE HOP (2026-11-19). The carpet test above
+        // looks only at blocks WITH a collision box; a flower, sapling, torch or button has none,
+        // so isAir() calls its cell empty and the tick below picks it as placeAt. The live ray
+        // then lands on the flower's outline: not the support's top face, and not a replaceable
+        // block either, so RealPlacement.readyToPlace answers null on every hop. Measured on the
+        // lighthouse build: "Pillar stuck y=67.2 air=52 insideCell=27 placeAt=25 readyNull=25
+        // placed=0 hit=161,67,46/up" -- the hit sitting in the very cell the block was going to.
+        // Baritone's MovementPillar.updateState (MovementPillar.java:254-263) breaks a source
+        // block that is neither air nor replaceable before it places: CLICK_LEFT, JUMP off. This
+        // is that branch. The feet cell is cleared when it is not replaceable (grass is, and
+        // readyToPlace accepts looking straight at it); the two cells above it when their outline
+        // crosses the body column the ray comes down through (RealPlacement.obstructsPillarRay).
+        if (player.isOnGround() && !player.isClimbing()) {
+            int fy = net.minecraft.util.math.MathHelper.floor(player.getY());
+            BlockPos col = supportedColumnUnder(player, world);
+            if (col == null) col = BlockPos.ofFloored(player.getX(), fy, player.getZ());
+            BlockPos clear = null;
+            for (int dy = 0; dy <= 2 && clear == null; dy++) {
+                BlockPos c = new BlockPos(col.getX(), fy + dy, col.getZ());
+                var st = world.getBlockState(c);
+                if (st.isAir() || !st.getCollisionShape(world, c).isEmpty()) continue;
+                boolean inTheWay = dy == 0
+                        ? !st.isReplaceable()
+                        : kaptainwutax.tungsten.helpers.RealPlacement.obstructsPillarRay(world, c);
+                if (inTheWay) clear = c;
+            }
+            if (clear != null) {
+                var st = world.getBlockState(clear);
+                if (!kaptainwutax.tungsten.path.BreakRules.canBreak(world, clear, st)) {
+                    Debug.logMessage("Pillar refused: " + st.getBlock() + " at " + clear.toShortString()
+                            + " is in the tower's way and may not be broken");
+                    pillarOutlineRefused++;
+                    noteRefusal(col);
+                    stop();
+                    return;
+                }
+                if (!clear.equals(clearing)) {
+                    clearing = clear;
+                    clearTicks = 0;
+                    Debug.logMessage("Pillar: breaking the " + st.getBlock() + " at "
+                            + clear.toShortString() + " first, the block cannot go through it");
+                }
+                if (++clearTicks > CLEAR_TICKS_MAX) {
+                    Debug.logMessage("Pillar stopped: could not break the " + st.getBlock() + " at "
+                            + clear.toShortString() + " in " + CLEAR_TICKS_MAX + " ticks");
+                    pillarOutlineRefused++;
+                    noteRefusal(col);
+                    stop();
+                    return;
+                }
+                Vec3d dv = Vec3d.ofCenter(clear).subtract(player.getEyePos());
+                float wantYaw = (float) Math.toDegrees(-Math.atan2(dv.x, dv.z));
+                float wantPitch = (float) Math.toDegrees(
+                        -Math.atan2(dv.y, Math.sqrt(dv.x * dv.x + dv.z * dv.z)));
+                WindMouseRotation.INSTANCE.setTarget(wantYaw, wantPitch);
+                // Identity, not angle: attack only while the player's own ray is on this cell, so
+                // nothing nearer along the ray is dug instead (PathExecutor's break gate, C5.3).
+                var lh = kaptainwutax.tungsten.path.movements.RotationHelper.liveHit(player);
+                boolean onTarget = lh instanceof BlockHitResult bh
+                        && lh.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK
+                        && bh.getBlockPos().equals(clear);
+                opts.attackKey.setPressed(onTarget);
+                opts.jumpKey.setPressed(false);
+                opts.forwardKey.setPressed(false);
+                opts.sprintKey.setPressed(false);
+                lastY = player.getY();   // clearing the column is not a stuck tower
+                sinceRung = 0;
+                return;
+            }
+            if (clearing != null) {
+                pillarOutlineCleared++;
+                clearing = null;
+                opts.attackKey.setPressed(false);
             }
         }
 
