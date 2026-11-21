@@ -976,6 +976,9 @@ public final class BlockPlaceHelper {
         return best;
     }
 
+    /** How far below a scaffold stand the ground may be: the tallest pillar the builder will raise. */
+    private static final int SCAFFOLD_MAX_DEPTH = 12;
+
     /** Scaffolds started for a cell with no reachable stand (see drainQueue). */
     public static volatile int scaffoldsStarted;
 
@@ -987,7 +990,7 @@ public final class BlockPlaceHelper {
     /**
      * The ground cell of a neighbouring column from which a pillar reaches a stand for
      * {@code target}, with room for the body, the column under the stand air down to ground no
-     * more than 6 blocks below. Null when no such column exists. The stands, in baritone's
+     * more than {@link #SCAFFOLD_MAX_DEPTH} blocks below. Null when no such column exists. The stands, in baritone's
      * GoalAdjacent terms (BuilderProcess.java:1092-1106):
      * <ul>
      *   <li>the block under the target can be placed against (its top face): beside that support,
@@ -1013,7 +1016,11 @@ public final class BlockPlaceHelper {
             if (!world.getBlockState(stand).isReplaceable() || !world.getBlockState(stand.up()).isReplaceable()) continue;
             if (!world.getBlockState(stand.up(2)).getCollisionShape(world, stand.up(2)).isEmpty()) continue;
             if (kaptainwutax.tungsten.path.RouteHazards.hazard(world, stand)) continue;
-            for (int depth = 1; depth <= 6; depth++) {
+            // ⛔ TWELVE, NOT SIX (2026-11-21). A ten-high lighthouse put its roof at y76-77 over ground at
+            // 68: every stand for a roof cell needed a pillar of seven or eight, and with six the roof cells
+            // came back NOSTAND, all five of them, once the roof itself had holes to stand in. PillarTask
+            // has no height limit of its own; the cap only bounds how much throwaway a stand may cost.
+            for (int depth = 1; depth <= SCAFFOLD_MAX_DEPTH; depth++) {
                 BlockPos cell = stand.down(depth);
                 if (!world.getBlockState(cell).isReplaceable()) {
                     BlockPos base = cell.up();
