@@ -491,6 +491,22 @@ public final class BlockPlaceHelper {
         // finds it, see the DOWN-face change above) -- prefer walking there and placing from the
         // side. Only when there is NO side stand (a genuine open-air column) do we pillar.
         BlockPos sideStand = placementStand(mc.world, head, wantedState(player, headCell.blockName()));
+        // ⛔ A SEALED CELL IS NOT WALKED INTO (2026-11-21). The pillar branch below sends the body INTO
+        // the cell; when every side at feet and head level is solid and the cell above it is closed
+        // too, there is no way in, and the navigator searched for one again and again: "physics
+        // already found no way to 226, 69, -68 twice -- giving the route up", the bottom centre of a
+        // solid 3x3 column. Hand such a cell back at once (deferNoFace, SEALED in walkDebug); the
+        // caller opens it from above. The body standing in it already is the one way in, and counts.
+        if (sideStand == null && standable(mc.world, head) && !player.getBlockPos().equals(head)
+                && sealed(mc.world, head)) {
+            if (walkDebug.length() < 700) walkDebug += "SEALED(" + head.toShortString() + ") ";
+            stopWalking();
+            QUEUE.poll();
+            DEFERRED.add(head);
+            deferNoFace++;
+            idleTicks = 0;
+            return;
+        }
         if (sideStand == null && standable(mc.world, head)) {
             if (player.getBlockPos().equals(head)) {
                 if (!equipBlock(player, headCell.blockName())) {
@@ -903,6 +919,19 @@ public final class BlockPlaceHelper {
         // that belong to whoever owns the build, not to the queue draining it.
         BlockPos above = target.up();
         return standable(world, above) ? above : null;
+    }
+
+    /** No way into {@code cell}: every horizontal side is blocked at feet or head level, and the cell
+     *  above its head space is closed, so the body can neither step in nor drop in. */
+    private static boolean sealed(net.minecraft.world.WorldView world, BlockPos cell) {
+        for (Direction d : Direction.Type.HORIZONTAL) {
+            BlockPos side = cell.offset(d);
+            if (kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(world, side)
+                    && kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(world, side.up())) {
+                return false;
+            }
+        }
+        return !kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(world, cell.up(2));
     }
 
     /** Reach used to pick a stand below a ceiling cell: survival's 4.5, so creative's 5 has room. */
